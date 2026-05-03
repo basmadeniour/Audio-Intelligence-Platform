@@ -14,6 +14,8 @@ class YouTubeService:
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
+            'ignoreerrors': True,
+            'no_overwrites': True,
         }
         
         downloaded_files = []
