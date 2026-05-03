@@ -6,11 +6,29 @@ class AudioAnalysisResponse(BaseModel):
     summary: Optional[str] = None
     keywords: Optional[List[str]] = None
     highlights: Optional[List[str]] = None
-    emotion: Optional[Dict[str, Any]] = None
-    audio_stats: Optional[Dict[str, Any]] = None
     chapters: Optional[List[Dict[str, Any]]] = None
     highlights_with_time: Optional[List[Dict[str, Any]]] = None
-    
-class HealthResponse(BaseModel):
-    status: str
-    message: str
+    translated_text: Optional[str] = None
+
+class SearchRequest(BaseModel):
+    query: str
+    top_k: int = 5
+
+class SearchResponse(BaseModel):
+    text: str
+    start_time: float
+    end_time: float
+
+class AskRequest(BaseModel):
+    question: str
+    top_k: int = 3
+
+class AskResponse(BaseModel):
+    question: str
+    answer: str
+    confidence: float = 0.0
+    sources: Optional[List[Dict[str, Any]]] = None
+
+class YouTubeRequest(BaseModel):
+    url: str
+    index_for_semantic: bool = False

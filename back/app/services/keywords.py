@@ -1,56 +1,42 @@
-from sklearn.feature_extraction.text import TfidfVectorizer
-import nltk
-from nltk.corpus import stopwords
-
-try:
-    nltk.data.find('tokenizers/punkt')
-except:
-    nltk.download('stopwords')
+import os
+from groq import Groq
 
 class KeywordsService:
     def __init__(self):
-        self.stop_words = set(stopwords.words('english'))
-        self.stop_words.update([
-            'you', 'your', 'the', 'that', 'and', 'for', 'are', 'with', 'can',
-            'will', 'have', 'this', 'but', 'not', 'all', 'from', 'get', 'just',
-            'like', 'more', 'what', 'when', 'then', 'there', 'would', 'could',
-            'them', 'they', 'their', 'was', 'were', 'been', 'being', 'into'
-        ])
+        api_key = os.getenv("GROQ_API_KEY")
+        if api_key:
+            self.client = Groq(api_key=api_key)
+            self.available = True
+        else:
+            self.client = None
+            self.available = False
     
     def extract_keywords(self, text: str, top_k: int = 7) -> list:
+        if not self.available:
+            return self._fallback_keywords(text, top_k)
+        
         try:
-            from app.services.text_cleaner import TextCleaner
-            cleaned_text = TextCleaner.clean_text(text)
-            
-            vectorizer = TfidfVectorizer(
-                max_features=20,
-                stop_words=list(self.stop_words),
-                ngram_range=(1, 2),
-                min_df=1,
-                max_df=0.9
+            response = self.client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": f"Extract the {top_k} most important keywords from the text. Return only the keywords as a comma-separated list, nothing else."},
+                    {"role": "user", "content": text[:3000]}
+                ],
+                temperature=0.2
             )
-            
-            tfidf_matrix = vectorizer.fit_transform([cleaned_text])
-            feature_names = vectorizer.get_feature_names_out()
-            scores = tfidf_matrix.toarray()[0]
-            
-            top_indices = scores.argsort()[-top_k:][::-1]
-            keywords = [feature_names[i] for i in top_indices if scores[i] > 0.1 and len(feature_names[i]) > 3]
-            
+            keywords_text = response.choices[0].message.content
+            keywords = [k.strip().lower() for k in keywords_text.replace('\n', ',').split(',') if k.strip()]
             return keywords[:top_k]
-            
-        except Exception as e:
+        except Exception:
             return self._fallback_keywords(text, top_k)
     
     def _fallback_keywords(self, text: str, top_k: int) -> list:
-        from app.services.text_cleaner import TextCleaner
-        cleaned_text = TextCleaner.clean_text(text)
-        words = cleaned_text.split()
-        
+        stop_words = {'the', 'and', 'to', 'of', 'a', 'in', 'is', 'it', 'that', 
+                     'for', 'you', 'with', 'this', 'are', 'as', 'be', 'on', 'at'}
+        words = text.lower().split()
         word_count = {}
         for w in words:
-            if w not in self.stop_words and len(w) > 3:
+            if w not in stop_words and len(w) > 3:
                 word_count[w] = word_count.get(w, 0) + 1
-        
         sorted_words = sorted(word_count.items(), key=lambda x: x[1], reverse=True)
         return [w for w, c in sorted_words[:top_k]]

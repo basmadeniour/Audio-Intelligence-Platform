@@ -1,54 +1,55 @@
-import whisper
-from pathlib import Path
-from app.core.config import config
 import os
+from pathlib import Path
+from groq import Groq
 
 class SpeechToTextService:
     def __init__(self):
-        ffmpeg_path = r"C:\Users\3B\AppData\Local\Temp\ffmpeg\bin"
-        
-        if os.path.exists(ffmpeg_path):
-            os.environ["PATH"] = ffmpeg_path + os.pathsep + os.environ.get("PATH", "")
-            print(f"FFmpeg added from: {ffmpeg_path}")
+        api_key = os.getenv("GROQ_API_KEY")
+        if api_key:
+            self.client = Groq(api_key=api_key)
+            self.available = True
         else:
-            print(f"FFmpeg not found at: {ffmpeg_path}")
-        
-        self.model = whisper.load_model(config.WHISPER_MODEL_SIZE)
-        print("Whisper model loaded successfully")
+            self.client = None
+            self.available = False
     
     def transcribe(self, audio_path: Path) -> str:
-        try:
-            print(f"Transcribing: {audio_path.name}")
-            
-            if not audio_path.exists():
-                raise FileNotFoundError(f"File not found: {audio_path}")
-            
-            result = self.model.transcribe(str(audio_path), fp16=False)
-            
-            print(f"Transcription completed successfully")
-            return result["text"]
-            
-        except Exception as e:
-            error_msg = str(e)
-            print(f"Error: {error_msg}")
-            raise Exception(f"Speech to text failed: {error_msg}")
+        if not self.available:
+            return "Error: GROQ_API_KEY not configured. Please add it to .env file"
+        
+        result = self.transcribe_with_segments(audio_path)
+        return result["text"]
     
     def transcribe_with_segments(self, audio_path: Path) -> dict:
-        try:
-            print(f"Transcribing with segments: {audio_path.name}")
-            
-            if not audio_path.exists():
-                raise FileNotFoundError(f"File not found: {audio_path}")
-            
-            result = self.model.transcribe(str(audio_path), fp16=False)
-            
-            print(f"Transcription completed successfully")
+        if not self.available:
             return {
-                "text": result["text"],
-                "segments": result.get("segments", [])
+                "text": "Error: GROQ_API_KEY not configured. Please add it to .env file",
+                "segments": []
             }
+        
+        try:
+            with open(audio_path, "rb") as file:
+                transcription = self.client.audio.transcriptions.create(
+                    file=(audio_path.name, file.read()),
+                    model="whisper-large-v3-turbo",
+                    response_format="verbose_json"
+                )
             
+            segments = []
+            if hasattr(transcription, 'segments') and transcription.segments:
+                for seg in transcription.segments:
+                    segments.append({
+                        "start": getattr(seg, "start", 0),
+                        "end": getattr(seg, "end", 0),
+                        "text": getattr(seg, "text", "")
+                    })
+            
+            return {
+                "text": transcription.text,
+                "segments": segments
+            }
+        
         except Exception as e:
-            error_msg = str(e)
-            print(f"Error: {error_msg}")
-            raise Exception(f"Speech to text failed: {error_msg}")
+            return {
+                "text": f"Transcription error: {str(e)}",
+                "segments": []
+            }
